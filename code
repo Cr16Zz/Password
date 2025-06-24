@@ -1,0 +1,74 @@
+# Password
+import sqlite3
+from hashlib import sha256
+import base64
+import secrets
+
+# Функция для генерации надёжного пароля
+def generate_password(length=12):
+    """Генерирует случайный пароль указанной длины."""
+    alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-='
+    password = ''.join(secrets.choice(alphabet) for _ in range(length))
+    return password
+
+# Функция для хэширования пароля
+def hash_password(password):
+    """Хэширует пароль с использованием SHA-256."""
+    hashed_password = sha256(password.encode()).digest()
+    return base64.b64encode(hashed_password)
+
+# Функция для сохранения пользователя и пароля в базу данных
+def save_user(conn, username, password):
+    """Сохраняет пользователя и хэшированный пароль в базу данных."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hash_password(password)))
+        conn.commit()
+        print("Пользователь успешно зарегистрирован.")
+    except sqlite3.IntegrityError as e:
+        print("Ошибка регистрации: ", str(e))
+
+# Функция для проверки введённого пароля
+def check_password(conn, username, input_password):
+    """Проверяет правильность введённого пароля по сравнению с сохранённым хэшем."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT password_hash FROM users WHERE username=?", (username,))
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    stored_hash = base64.b64decode(row[0])
+    new_hash = sha256(input_password.encode()).digest()
+    return stored_hash == new_hash
+
+# Основная логика программы
+if __name__ == "__main__":
+    # Создаем соединение с базой данных
+    conn = sqlite3.connect('passwords.db')
+    cursor = conn.cursor()
+
+    # Создаем таблицу пользователей, если она не существует
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash BLOB NOT NULL
+    )
+    ''')
+    conn.commit()
+
+    # Регистрация нового пользователя
+    username = input("Введите ваше имя пользователя: ")
+    password_length = int(input("Задайте желаемую длину пароля (минимум 12 символов): "))
+    generated_password = generate_password(password_length)
+    print(f"Сгенерированный пароль: {generated_password}")
+    save_user(conn, username, generated_password)
+
+    # Проверка введённого пароля
+    input_password = input("Введите пароль для проверки: ")
+    if check_password(conn, username, input_password):
+        print("Пароль проверен успешно!")
+    else:
+        print("Неправильный пароль.")
+
+    # Закрываем соединение с базой данных
+    conn.close()
